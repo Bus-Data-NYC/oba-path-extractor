@@ -1,8 +1,10 @@
 var express = require('express');
 var app = express();
 
-var fs = require('fs');
 var request = require('request');
+
+var fs = require('fs');
+var mkdirp = require('mkdirp').mkdirp;
 
 var buslines;
 fs.readFile('data/buslines.json', 'utf8', function (err, data) {
@@ -18,13 +20,51 @@ app.get('/route', function(req, res) {
 
 		buslines.forEach(function (busRoute, i) {
 			getRouteData(busRoute, function (r) {
-				if (r.error) {
+				if (r.error || r.response.matches[0] == undefined) {
 					allBuses[busRoute] = false;
 				} else {
 					allBuses[busRoute] = r.response;
-					var rte = JSON.stringify(r.response.matches[0]),
-							rte_name = 'geojsons/' + busRoute + '.geojson';
-					fs.writeFile(rte_name, rte, function (err) {});
+					var rte_dirs = r.response.matches[0].directions;
+					[0, 1].forEach(function (rd, i) {
+						if (rte_dirs[i] !== undefined) {
+							var rd = rte_dirs[i],
+									props = {},
+									keys = Object.keys(rd);
+
+							keys.forEach(function (key, i) {
+								if (key !== 'shape' && key !== 'polylines')
+									props[key] = rd[key];
+							});
+
+							var dirObj = { 
+								"type": "FeatureCollection",
+							  "features": []
+							};
+
+							rte_dirs[i].shape.forEach(function (ea, i) {
+						    var feat = {
+						    	"type": "Feature",
+						      "geometry": ea,
+						      "properties": props,
+						    }
+						    dirObj.features.push(feat);
+							});
+
+							var rte_path = 'geojsons/' + busRoute;
+							mkdirp(rte_path, function (err) {
+							  if (err) { 
+							  	console.error('Failed to make file path. Error: ' + err);
+							  } else {
+							  	rte_path = rte_path + '/' + busRoute + '_dir' + i + '.geojson';
+							  	fs.writeFile(rte_path, function (err) {
+							  		if (err) {
+							  			console.error('Failed to write file. Error: ' + err);
+							  		}
+							  	});
+							  }
+							});
+						}
+					});
 				}
 
 				if (i == buslines.length - 1) {
