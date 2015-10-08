@@ -170,9 +170,8 @@ var decodePolyline = function(encoded) {
     var dlng = ((result & 1) ? ~(result >> 1) : (result >> 1));
     lng += dlng;
 
-    array.push([lat * 1e-5, lng * 1e-5]);
+    array.push([lng * 1e-5, lat * 1e-5]);
   }
 
-  var ls = { "type": "LineString", "coordinates": array }
-  return ls;
+  return { "type": "LineString", "coordinates": array };
 }
