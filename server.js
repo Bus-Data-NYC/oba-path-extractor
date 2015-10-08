@@ -56,7 +56,8 @@ app.get('/route', function(req, res) {
 							  	console.error('Failed to make file path. Error: ' + err);
 							  } else {
 							  	rte_path = rte_path + '/' + busRoute + '_dir' + i + '.geojson';
-							  	fs.writeFile(rte_path, function (err) {
+							  	var dostr = JSON.stringify(dirObj);
+							  	fs.writeFile(rte_path, dostr, function (err) {
 							  		if (err) {
 							  			console.error('Failed to write file. Error: ' + err);
 							  		}
