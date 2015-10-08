@@ -1,0 +1,12 @@
+{
+  "status": "Beta",
+  "thumbnailUrl": "https://upload.wikimedia.org/wikipedia/commons/thumb/3/3c/MTA_NYC_logo.svg/1000px-MTA_NYC_logo.svg.png",
+  "bornAt": "BetaNYC Hacknights",
+  "geography": "NYC",
+  "politicalEntity":"MTA",
+  "type":"Data Repo",
+  "needs": [],
+  "categories": [
+    {"category": "Transportation"}
+  ]
+}
