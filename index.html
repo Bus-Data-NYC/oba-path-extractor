@@ -122,7 +122,7 @@
     var markers = new L.MarkerClusterGroup({ spiderfyOnMaxZoom: true, disableClusteringAtZoom: 18});
 
     setTimeout(function() {
-      $.getJSON('../data/stops.json')
+      $.getJSON('data/stops.json')
       .done(function (data) {
         console.log('Done logged, running...');
         runPlot(data);
