@@ -44,23 +44,15 @@ app.get('/route', function(req, res) {
 									props[key] = rd[key];
 							});
 
-							var s = getRteStops(busRoute)[i];
-							if (s == undefined || s == null) {
-								console.log("Failed stops data join for route id: " + busRoute);
-
-							}
-
 							var dirObj = { 
 								"type": "FeatureCollection",
 							  "features": [],
 							  "properties": {
-							  	"stops": s
+							  	"stops": null
 							  }
 							};
 
 							rte_dirs[i].shape.forEach(function (ea, i) {
-								var f = updateWithStops(ea, s);
-
 						    var feat = {
 						    	"type": "Feature",
 						      "geometry": ea,
@@ -68,6 +60,18 @@ app.get('/route', function(req, res) {
 						    }
 						    dirObj.features.push(feat);
 							});
+
+							// create updated locations for stops
+							var s = getRteStops(busRoute)[i];
+							if (s == undefined || s == null) {
+								console.log("Failed stops data join for route id: " + busRoute);
+							} else {
+							  dirObj.features.forEach(function (shape, i) {
+							    var relStops = getRelevantStops(shape, s),
+							    		allignedStops = calcStopsAlligned(shape, relStops);
+							    dirObj.features[i].properties['stops'] = allignedStops;
+							  });
+							}
 
 							var rte_path = 'geojsons/' + busRoute;
 							mkdirp(rte_path, function (err) {
@@ -137,22 +141,6 @@ var getRteStops = function (busRoute) {
 };
 
 
-var updateWithStops = function (shape, stops) {
-	if (shape == undefined) {
-		console.log("Shape is undefined.");
-	} else if (stops == undefined) {
-		console.log("Stops are undefined.");
-	} else {
-		console.log('shape: ', shape);
-		console.log('stops: ', stops);
-		Object.keys(stops).forEach(function(e) {
-			var stop = stops[e];
-			
-		});
-	}
-};
-
-
 var getRouteData = function (busRoute, cb) {
 	var url = 'http://bustime.mta.info/api/search?q=' + busRoute;
 
@@ -188,7 +176,7 @@ var getRouteData = function (busRoute, cb) {
 			}
 		}
 	});
-}
+};
 
 
 var decodePolyline = function(encoded) {
@@ -228,4 +216,81 @@ var decodePolyline = function(encoded) {
   }
 
   return { "type": "LineString", "coordinates": array };
-}
+};
+
+
+function getRelevantStops (shape, stops) {
+  var pts = shape.geometry.coordinates;
+  var rel = [];
+  pts.forEach(function (aft, i) {
+    var best = { s: null, d: null };
+    Object.keys(stops).forEach(function (stop) {
+      var s = stops[stop],
+          l = s.location;
+      if (s !== undefined && s.location !== undefined) {
+	      var d = calcDist(l[0], l[1], aft[1], aft[0]);
+
+	      if ((i > 0 && d < 100) && (best.d == null || d < best.d)) {
+	        // compare distances with point in the middle versus with the point after the two points
+	        var bef = pts[i - 1],
+	            distNo = calcDist(bef[0], bef[1], aft[1], aft[0]) + calcDist(aft[0], aft[1], l[1], l[0]),
+	            distYes = calcDist(bef[0], bef[1], l[1], l[0]) + calcDist(l[0], l[1], aft[1], aft[0]);
+
+	        if (distYes < distNo) {
+	          best.s = s;
+	          best.d = d;
+	        }
+	      }
+      }
+    });
+    if (best.s !== null) {
+      rel.push(best.s);
+    }
+  });
+  return rel;
+};
+
+function calcStopsAlligned (shape, stops) {
+  var pts = shape.geometry.coordinates,
+      adjStops = [];
+
+  stops.forEach(function (s) {
+    var best = {d: null, dp: null, ll: null},
+        l = s.location; 
+    pts.forEach(function (aft, i) {
+      var d = calcDist(l[0], l[1], aft[1], aft[0]);
+      if ((i > 0 && d < 100) && (best.d == null || d < best.d)) {
+        var bef = pts[i - 1],
+
+            A = calcDist(l[0], l[1], aft[1], aft[0]),
+            B = calcDist(bef[1], bef[0], l[0], l[1]),
+            F = calcDist(bef[1], bef[0], aft[1], aft[0]),
+
+            z = Math.acos((F * F + B * B - A *A)/(2 * B * F)),
+            C = B * Math.cos(z),
+
+            verB = F * Math.sin(z),
+            horB = F * Math.cos(z),
+            verS = C * Math.sin(z),
+            horS = C * Math.cos(z),
+
+            lat = bef[1] - ((bef[1] - aft[1]) * (verS / verB)),
+            lng = (aft[0] - bef[0]) * (horS / horB) + bef[0];
+
+        best.d = d;
+        best.dp = calcDist(bef[1], bef[0], l[0], l[1]);
+        best.ll = [lat, lng];
+      }
+    });
+    adjStops.push({adjusted: best.ll, metersFromPrior: best.dp, original: s});
+  });
+  return adjStops;
+};
+
+function calcDist (lat1, lng1, lat2, lng2) {
+  var R = 6371000,
+      rad = (Math.PI / 180),
+      x = (lng2 - lng1) * rad,
+      y = (lat2 - lat1) * rad;
+  return R * Math.sqrt((x * x) + (y * y));
+};
