@@ -52,7 +52,7 @@ app.get('/route', function(req, res) {
 							  }
 							};
 
-							rte_dirs[i].shape.forEach(function (ea, i) {
+							rte_dirs[i].shape.forEach(function (ea) {
 						    var feat = {
 						    	"type": "Feature",
 						      "geometry": ea,
@@ -62,14 +62,18 @@ app.get('/route', function(req, res) {
 							});
 
 							// create updated locations for stops
-							var s = getRteStops(busRoute)[i];
+							var s = getRteStops(busRoute);
 							if (s == undefined || s == null) {
 								console.log("Failed stops data join for route id: " + busRoute);
 							} else {
+								dirObj.properties.stops = s;
 							  dirObj.features.forEach(function (shape, i) {
-							    var relStops = getRelevantStops(shape, s),
-							    		allignedStops = calcStopsAlligned(shape, relStops);
-							    dirObj.features[i].properties['stops'] = allignedStops;
+							  	dirObj.features[i].properties['stops'] = null;
+							    var relStops = getRelevantStops(shape, s[i]);
+							   	if (relStops !== undefined && relStops.length > 0) {
+							   		var allignedStops = calcStopsAlligned(shape, relStops);
+							   		dirObj.features[i].properties['stops'] = allignedStops;
+							   	}
 							  });
 							}
 
@@ -88,7 +92,7 @@ app.get('/route', function(req, res) {
 							  }
 							});
 						} else {
-							console.log('Route direction ' + rd + ' was undefined.');
+							console.log('Route direction ' + rd + ' was undefined for route: ' + busRoute);
 						}
 					});
 				}
@@ -126,15 +130,13 @@ exports = module.exports = app;
 // utilities
 var getRteStops = function (busRoute) {
 	var stopnames = Object.keys(stops);
-	var f = busRoute.split(/[^A-Za-z0-9]/)[0];
+	var f = busRoute.split(/[^A-Za-z0-9]/)[0].toUpperCase();
 	if (stopnames.indexOf(f) > -1) {
 		return stops[f];
 	} else {
 		var sel = null;
 		stopnames.forEach(function (s) {
-			if (s.indexOf(f) > -1) {
-				sel = s;
-			}
+			if (s.indexOf(f) > -1 && s.split(/[^A-Za-z0-9]/)[0] == f) { sel = s; }
 		});
 		return stops[sel];
 	}
@@ -220,6 +222,9 @@ var decodePolyline = function(encoded) {
 
 
 function getRelevantStops (shape, stops) {
+	if (stops == undefined) {
+		return undefined;
+	}
   var pts = shape.geometry.coordinates;
   var rel = [];
   pts.forEach(function (aft, i) {
@@ -282,7 +287,7 @@ function calcStopsAlligned (shape, stops) {
         best.ll = [lat, lng];
       }
     });
-    adjStops.push({adjusted: best.ll, metersFromPrior: best.dp, original: s});
+    adjStops.push({adjusted: best.ll, original: s});
   });
   return adjStops;
 };

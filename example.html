@@ -187,7 +187,7 @@
 
     function placeRouteStops () {
       setup();
-      $.getJSON('geojsons/B14/B14_dir0.geojson')
+      $.getJSON('geojsons/B1/B1_dir0.geojson')
       .done(function (data) {
         console.log('Done logged, running...');
         runStopDraw(data);
@@ -232,13 +232,13 @@
             var st = L.circle(stop.location, 10, {color: col[i]});
             allStops.addLayer(st);
           });
-          // allStops.addTo(map);
+          allStops.addTo(map);
 
           allShapes.addLayer(sh);
 
           var pts = shape.geometry.coordinates;
           pts.forEach(function (pt) {
-            // L.circle([pt[1], pt[0]], 4, { color: col[i] }).addTo(map);
+            L.circle([pt[1], pt[0]], 4, { color: col[i] }).addTo(map);
           });
         });
         allShapes.addTo(map);
@@ -311,8 +311,8 @@
             best.ll = [lat, lng];
           }
         });
-        // L.circle(best.ll, 3, {color: 'black'}).bindPopup(String(best.d)).addTo(map);
-        // L.polyline([l,best.ll]).addTo(map)
+        L.circle(best.ll, 3, {color: 'black'}).bindPopup(String(best.d)).addTo(map);
+        L.polyline([l,best.ll]).addTo(map)
         adjStops.push({adjusted: best.ll, metersFromPrior: best.dp, original: s});
       });
       return adjStops;
