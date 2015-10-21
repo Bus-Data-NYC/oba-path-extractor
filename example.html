@@ -97,8 +97,11 @@
     <div class="container">
       
       <h2>
-        Test map
+        Testing tool
       </h2>
+
+      <button onclick="populateStops()">Draw Stops</button>
+      <button onclick="placeRouteStops()">Analyze B1 (Dir 0)</button>
 
       <div class="row">
         <div class="col-xs-12">
@@ -112,16 +115,22 @@
 
   <script type="text/javascript">
 
-    var map = new L.map('map', {
-      center: new L.LatLng(40.8, -73.94),
-      zoom: 14,
-      layers: []
-    });
-    L.tileLayer('http://{s}.basemaps.cartocdn.com/light_nolabels/{z}/{x}/{y}.png').addTo(map);
+    function setup () {
+      map = new L.map('map', {
+        center: new L.LatLng(40.8, -73.94),
+        zoom: 14,
+        layers: []
+      });
+      L.tileLayer('http://{s}.basemaps.cartocdn.com/light_nolabels/{z}/{x}/{y}.png').addTo(map);
+    };
 
-    var markers = new L.MarkerClusterGroup({ spiderfyOnMaxZoom: true, disableClusteringAtZoom: 18});
+    // global for stops
+    var map;
+    var markers;
 
-    setTimeout(function() {
+    function populateStops () {
+      setup();
+      markers = new L.MarkerClusterGroup({ spiderfyOnMaxZoom: true, disableClusteringAtZoom: 18});
       $.getJSON('data/stops.json')
       .done(function (data) {
         console.log('Done logged, running...');
@@ -135,7 +144,7 @@
           console.log('Err', error);
         }
       })
-    }, 1000);
+    };
 
     var runPlot = function (data) {
       if (typeof data == 'string') {
@@ -147,23 +156,174 @@
       }
 
       console.log('Processing ' + data.length + ' records...');
-      data.forEach(function (stop) {
-        var loc = L.latLng(stop.stop_lat, stop.stop_lon);
-        var m = L.marker(loc);
+      Object.keys(data).forEach(function (stop) {
+        stop = data[stop];
+        [0, 1].forEach(function (dir) {
+          sDir = stop[dir];
+          if (sDir !== undefined) {
+            Object.keys(sDir).forEach(function (s) {
+              s = sDir[s];
+              var loc = L.latLng(s.location[0], s.location[1]);
+              var m = L.marker(loc);
 
-        var str = 'direction_id: ' + stop.direction_id + 
-                  ', route_id: ' + stop.route_id + 
-                  ', stop_id: ' + stop.stop_id + 
-                  ', stop_lat: ' + stop.stop_lat + 
-                  ', stop_lon: ' + stop.stop_lon +
-                  ', stop_name: ' + stop.stop_name +
-                  ', stop_sequence: ' + stop.stop_sequence;
-        m.bindPopup(str);
-        markers.addLayer(m);
+              var str = 'direction_id: ' + s.direction_id + 
+                        ', route_id: ' + s.route_id + 
+                        ', stop_id: ' + s.stop_id + 
+                        ', stop_lat: ' + s.stop_lat + 
+                        ', stop_lon: ' + s.stop_lon +
+                        ', stop_name: ' + s.stop_name +
+                        ', stop_sequence: ' + s.stop_sequence;
+              m.bindPopup(str);
+              markers.addLayer(m);
+            });
+          }
+        });
       });
 
       console.log('Data processing complete, adding to map.')
       map.addLayer(markers);
+    };
+
+
+    function placeRouteStops () {
+      setup();
+      $.getJSON('geojsons/B1/B1_dir0.geojson')
+      .done(function (data) {
+        console.log('Done logged, running...');
+        runStopDraw(data);
+      })
+      .error(function (error) {
+        if (error.status == 200) {
+          console.log('Error logged - but 200 so running...');
+          runStopDraw(error.responseText);
+        } else {
+          console.log('Err', error);
+        }
+      })
+    };
+
+    function runStopDraw (data) {
+      if (typeof data == 'string') {
+        console.log('Data is string, parsing...');
+        data = JSON.parse(data);
+        console.log('Done parsing string.');
+      } else {
+        console.log('Data is already object...');
+
+        var col = ['red', 'green', 'blue'];
+        var stops = data.properties.stops;
+        var allStops = L.featureGroup();
+        Object.keys(stops).forEach(function (stop) {
+          var st = L.circle(stops[stop].location, 10);
+          allStops.addLayer(st);
+        });
+        // allStops.addTo(map);
+
+        var shapes = data.features;
+        var allShapes = L.featureGroup();
+        shapes.forEach(function (shape, i) {
+          var sh = L.geoJson(shape, { style: { color: col[i] } });
+          
+          var relStops = getRelevantStops(shape, stops);
+          var allignedStops = calcStopsAlligned(shape, relStops);
+
+          var allStops = L.featureGroup();
+          relStops.forEach(function (stop) {
+            var st = L.circle(stop.location, 10, {color: col[i]});
+            allStops.addLayer(st);
+          });
+          allStops.addTo(map);
+
+          allShapes.addLayer(sh);
+
+          var pts = shape.geometry.coordinates;
+          pts.forEach(function (pt) {
+            L.circle([pt[1], pt[0]], 4, { color: col[i] }).addTo(map);
+          });
+        });
+        allShapes.addTo(map);
+
+        map.fitBounds(allShapes.getBounds());
+      }
+    };
+
+    function getRelevantStops (shape, stops) {
+      var pts = shape.geometry.coordinates;
+      var rel = [];
+      pts.forEach(function (aft, i) {
+        var best = {
+          s: null,
+          d: null
+        };
+        Object.keys(stops).forEach(function (stop) {
+          var s = stops[stop],
+              l = stops[stop].location,
+              d = calcDist(l[0], l[1], aft[1], aft[0]);
+
+          if ((i > 0 && d < 100) && (best.d == null || d < best.d)) {
+            // compare distances with point in the middle versus with the point after the two points
+            var bef = pts[i - 1],
+                distNo = calcDist(bef[0], bef[1], aft[1], aft[0]) + calcDist(aft[0], aft[1], l[1], l[0]),
+                distYes = calcDist(bef[0], bef[1], l[1], l[0]) + calcDist(l[0], l[1], aft[1], aft[0]);
+
+            if (distYes < distNo) {
+              best.s = s;
+              best.d = d;
+            }
+          }
+        });
+        if (best.s !== null) {
+          rel.push(best.s);
+        }
+      });
+      return rel;
+    };
+
+    function calcStopsAlligned (shape, stops) {
+      var pts = shape.geometry.coordinates,
+          adjStops = [];
+
+      stops.forEach(function (s) {
+        var best = {d: null, dp: null, ll: null},
+            l = s.location;
+        pts.forEach(function (aft, i) {
+          var d = calcDist(l[0], l[1], aft[1], aft[0]);
+          if ((i > 0 && d < 100) && (best.d == null || d < best.d)) {
+            var bef = pts[i - 1],
+
+                A = calcDist(l[0], l[1], aft[1], aft[0]),
+                B = calcDist(bef[1], bef[0], l[0], l[1]),
+                F = calcDist(bef[1], bef[0], aft[1], aft[0]),
+
+                z = Math.acos((F * F + B * B - A *A)/(2 * B * F)),
+                C = B * Math.cos(z),
+
+                verB = F * Math.sin(z),
+                horB = F * Math.cos(z),
+                verS = C * Math.sin(z),
+                horS = C * Math.cos(z),
+
+                lat = bef[1] - ((bef[1] - aft[1]) * (verS / verB)),
+                lng = (aft[0] - bef[0]) * (horS / horB) + bef[0];
+
+            best.d = d;
+            best.dp = calcDist(bef[1], bef[0], l[0], l[1]);
+            best.ll = [lat, lng];
+          }
+        });
+        L.circle(best.ll, 3, {color: 'black'}).bindPopup(String(best.d)).addTo(map);
+        L.polyline([l,best.ll]).addTo(map)
+        adjStops.push({adjusted: best.ll, metersFromPrior: best.dp, original: s});
+      });
+      return adjStops;
+    };
+
+    function calcDist (lat1, lng1, lat2, lng2) {
+      var R = 6371000,
+          rad = (Math.PI / 180),
+          x = (lng2 - lng1) * rad,
+          y = (lat2 - lat1) * rad;
+      return R * Math.sqrt((x * x) + (y * y));
     };
 
   </script>
